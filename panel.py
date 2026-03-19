@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DiskHealth Agent Server  v1.0.0
+DiskHealth Agent Server  v2.4
 
 """
 
@@ -22,6 +22,7 @@ import csv, io
 from datetime import timedelta
 
 
+# ── New v2.4 DB schemas ────────────────────────────────────────────────────────
 _TRENDS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS disk_trends (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,9 +42,12 @@ _TRACKED_METRICS = [
 
 def _record_trend(conn, agent_id, hostname, disks):
     ts = _now()
+    # Build set of currently present disk serials
+    current_serials = set()
     for disk in disks:
         serial = disk.get("serial") or disk.get("model","unknown")
         model  = disk.get("model","")
+        current_serials.add(serial)
         for field, key, skip_null in _TRACKED_METRICS:
             val = disk.get(field)
             if skip_null and val is None: continue
@@ -53,17 +57,17 @@ def _record_trend(conn, agent_id, hostname, disks):
                 "INSERT INTO disk_trends(ts,agent_id,hostname,disk_serial,disk_model,metric,value)"
                 " VALUES(?,?,?,?,?,?,?)",
                 (ts,agent_id,hostname,serial,model,key,fval))
-
-_SETTINGS_DEFAULTS = {
-    "offline_threshold_seconds":"180","auto_deregister_days":"0",
-    "default_poll_seconds":"30",
-    "thresh_temp_warn":"45","thresh_temp_crit":"60",
-    "thresh_realloc_warn":"1","thresh_realloc_crit":"5",
-    "thresh_pending_warn":"1","thresh_pending_crit":"5",
-    "thresh_uncorr_warn":"1","thresh_uncorr_crit":"1","thresh_uncorr_warn":"1","thresh_uncorr_crit":"1","thresh_wear_warn":"75","thresh_wear_crit":"90",
-    "thresh_spare_warn":"20","thresh_spare_crit":"10",
-}
-
+    # Remove trend data for disks no longer in this agent's report
+    # (unplugged USB drives, replaced disks, etc.)
+    if current_serials:
+        placeholders = ",".join("?" * len(current_serials))
+        conn.execute(
+            "DELETE FROM disk_trends WHERE agent_id=? AND disk_serial NOT IN (%s)" % placeholders,
+            [agent_id] + list(current_serials)
+        )
+    else:
+        # No disks reported — clear all trend data for this agent
+        conn.execute("DELETE FROM disk_trends WHERE agent_id=?", (agent_id,))
 def _cfg_get(c, key, default=None):
     row = c.execute("SELECT value FROM settings WHERE key=?",(key,)).fetchone()
     return row["value"] if row else default
@@ -181,6 +185,18 @@ def _init_scripts():
                 print("  [warn] Could not write %s: %s" % (filename, e))
 
 
+
+_SETTINGS_DEFAULTS = {
+    "offline_threshold_seconds":"180","auto_deregister_days":"0",
+    "default_poll_seconds":"30",
+    "thresh_temp_warn":"45","thresh_temp_crit":"60",
+    "thresh_realloc_warn":"1","thresh_realloc_crit":"5",
+    "thresh_pending_warn":"1","thresh_pending_crit":"5",
+    "thresh_uncorr_warn":"1","thresh_uncorr_crit":"1",
+    "thresh_wear_warn":"75","thresh_wear_crit":"90",
+    "thresh_spare_warn":"20","thresh_spare_crit":"10",
+}
+
 def init_db():
     with db() as c:
         c.executescript("""
@@ -239,6 +255,32 @@ CREATE TABLE IF NOT EXISTS agent_poll_intervals (
 """)
         for k,v in _SETTINGS_DEFAULTS.items():
             c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)",(k,v))
+        # Clean up trend records for disks no longer in any agent's disk_summary
+        try:
+            c.executescript("""
+                DELETE FROM disk_trends WHERE rowid IN (
+                    SELECT dt.rowid FROM disk_trends dt
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM agents a
+                        WHERE a.agent_id = dt.agent_id
+                        AND a.disk_summary LIKE '%' || dt.disk_serial || '%'
+                    )
+                );
+            """)
+        except: pass
+        # Clean up trend records for disks no longer in any agent's disk_summary
+        try:
+            c.executescript("""
+                DELETE FROM disk_trends WHERE rowid IN (
+                    SELECT dt.rowid FROM disk_trends dt
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM agents a
+                        WHERE a.agent_id = dt.agent_id
+                        AND a.disk_summary LIKE '%' || dt.disk_serial || '%'
+                    )
+                );
+            """)
+        except: pass
 
 
 class _SSEBroker:
@@ -277,39 +319,131 @@ def _worst_status(disks):
     return min((d.get("smart_status","Unknown") for d in disks), key=lambda s:order.get(s,2))
 
 def _check_alerts(c, agent_id, hostname, disks):
-    for disk in disks:
-        status = disk.get("smart_status","Unknown")
-        serial = disk.get("serial") or disk.get("model","?")
-        model  = disk.get("model","?")
-        if status == "Critical":
-            sev = "critical"
-            msg = "Disk '%s' (S/N: %s) on %s is CRITICAL - SMART failure predicted!" % (model, serial, hostname)
-        elif status == "Warning":
-            sev = "warning"
-            details = []
-            if disk.get("reallocated"): details.append("%d reallocated sectors" % disk["reallocated"])
-            if disk.get("pending"):     details.append("%d pending sectors"     % disk["pending"])
-            if disk.get("media_errors"):details.append("%d media errors"        % disk["media_errors"])
-            if disk.get("percentage_used") is not None and disk["percentage_used"]>=90:
-                details.append("%d%% SSD wear" % disk["percentage_used"])
-            msg = "Disk '%s' (S/N: %s) on %s WARNING - %s" % (
-                model, serial, hostname, ", ".join(details) if details else "degraded SMART status")
-        else:
-            continue
-        existing = c.execute("SELECT id FROM alerts WHERE agent_id=? AND disk_serial=? AND severity=? AND dismissed=0",
-                             (agent_id, serial, sev)).fetchone()
+    """Check disk metrics against configurable thresholds and raise alerts."""
+    # Load thresholds from settings table (fall back to safe defaults)
+    def _thr(key, default):
+        try:
+            row = c.execute("SELECT value FROM settings WHERE key=?",(key,)).fetchone()
+            return float(row["value"]) if row else float(default)
+        except: return float(default)
+
+    t_temp_warn  = _thr("thresh_temp_warn",  45)
+    t_temp_crit  = _thr("thresh_temp_crit",  60)
+    t_real_warn  = _thr("thresh_realloc_warn", 1)
+    t_real_crit  = _thr("thresh_realloc_crit", 5)
+    t_pend_warn  = _thr("thresh_pending_warn", 1)
+    t_pend_crit  = _thr("thresh_pending_crit", 5)
+    t_uncr_warn  = _thr("thresh_uncorr_warn",  1)
+    t_uncr_crit  = _thr("thresh_uncorr_crit",  1)
+    t_wear_warn  = _thr("thresh_wear_warn",   75)
+    t_wear_crit  = _thr("thresh_wear_crit",   90)
+    t_spar_warn  = _thr("thresh_spare_warn",  20)
+    t_spar_crit  = _thr("thresh_spare_crit",  10)
+
+    def _alert(agent_id, hostname, sev, msg, serial):
+        existing = c.execute(
+            "SELECT id FROM alerts WHERE agent_id=? AND disk_serial=? AND severity=? AND dismissed=0",
+            (agent_id, serial, sev)).fetchone()
         if not existing:
-            c.execute("INSERT INTO alerts(agent_id,hostname,severity,message,disk_serial,created_at) VALUES(?,?,?,?,?,?)",
-                      (agent_id, hostname, sev, msg, serial, _now()))
+            c.execute(
+                "INSERT INTO alerts(agent_id,hostname,severity,message,disk_serial,created_at) VALUES(?,?,?,?,?,?)",
+                (agent_id, hostname, sev, msg, serial, _now()))
             broker.publish("alert", {"agent_id":agent_id,"hostname":hostname,"severity":sev,"message":msg})
             _log_activity(c, agent_id, hostname, "alert", msg)
+
+    for disk in disks:
+        serial = disk.get("serial") or disk.get("model","?")
+        model  = disk.get("model","?")
+        issues_crit = []
+        issues_warn = []
+
+        # Temperature
+        temp = disk.get("temperature")
+        if temp is not None:
+            if temp >= t_temp_crit:
+                issues_crit.append("temperature %d°C (>= %d°C)" % (temp, int(t_temp_crit)))
+            elif temp >= t_temp_warn:
+                issues_warn.append("temperature %d°C (>= %d°C)" % (temp, int(t_temp_warn)))
+
+        # Reallocated sectors
+        real = disk.get("reallocated")
+        if real is not None:
+            if real >= t_real_crit:
+                issues_crit.append("%d reallocated sectors" % real)
+            elif real >= t_real_warn:
+                issues_warn.append("%d reallocated sectors" % real)
+
+        # Pending sectors
+        pend = disk.get("pending")
+        if pend is not None:
+            if pend >= t_pend_crit:
+                issues_crit.append("%d pending sectors" % pend)
+            elif pend >= t_pend_warn:
+                issues_warn.append("%d pending sectors" % pend)
+
+        # Uncorrectable
+        uncr = disk.get("uncorrectable")
+        if uncr is not None:
+            if uncr >= t_uncr_crit:
+                issues_crit.append("%d uncorrectable errors" % uncr)
+            elif uncr >= t_uncr_warn:
+                issues_warn.append("%d uncorrectable errors" % uncr)
+
+        # SSD Wear
+        wear = disk.get("percentage_used")
+        if wear is not None:
+            if wear >= t_wear_crit:
+                issues_crit.append("SSD wear %d%% (>= %d%%)" % (wear, int(t_wear_crit)))
+            elif wear >= t_wear_warn:
+                issues_warn.append("SSD wear %d%% (>= %d%%)" % (wear, int(t_wear_warn)))
+
+        # Spare capacity (inverted — low is bad)
+        spare = disk.get("available_spare")
+        if spare is not None:
+            if spare <= t_spar_crit:
+                issues_crit.append("spare capacity %d%% (<= %d%%)" % (spare, int(t_spar_crit)))
+            elif spare <= t_spar_warn:
+                issues_warn.append("spare capacity %d%% (<= %d%%)" % (spare, int(t_spar_warn)))
+
+        # Media errors
+        merr = disk.get("media_errors")
+        if merr:
+            issues_warn.append("%d media errors" % merr)
+
+        # Also respect SMART overall status from agent
+        smart_status = disk.get("smart_status","Unknown")
+
+        # Raise critical alert
+        if issues_crit or smart_status == "Critical":
+            detail = ", ".join(issues_crit) if issues_crit else "SMART failure predicted"
+            msg = "Disk '%s' (S/N: %s) on %s — CRITICAL: %s" % (model, serial, hostname, detail)
+            _alert(agent_id, hostname, "critical", msg, serial)
+
+        # Raise warning alert (only if no critical)
+        elif issues_warn or smart_status == "Warning":
+            detail = ", ".join(issues_warn) if issues_warn else "degraded SMART status"
+            msg = "Disk '%s' (S/N: %s) on %s — WARNING: %s" % (model, serial, hostname, detail)
+            _alert(agent_id, hostname, "warning", msg, serial)
+
+        # Auto-dismiss stale alerts if disk is now healthy
+        else:
+            if smart_status in ("Healthy", "Unknown"):
+                c.execute(
+                    "UPDATE alerts SET dismissed=1 WHERE agent_id=? AND disk_serial=? AND dismissed=0",
+                    (agent_id, serial))
 
 def _offline_watchdog():
     notified = set()
     while True:
-        time.sleep(30)
+        time.sleep(10)
         try:
-            cutoff_iso = datetime.fromtimestamp(time.time()-AGENT_OFFLINE_SECONDS,tz=timezone.utc).isoformat(timespec="seconds")
+            _thr = AGENT_OFFLINE_SECONDS
+            try:
+                with db() as _c:
+                    _row = _c.execute("SELECT value FROM settings WHERE key='offline_threshold_seconds'").fetchone()
+                    if _row: _thr = int(_row["value"])
+            except: pass
+            cutoff_iso = datetime.fromtimestamp(time.time()-_thr,tz=timezone.utc).isoformat(timespec="seconds")
             with db() as c:
                 rows = c.execute("SELECT agent_id,hostname,last_seen FROM agents WHERE last_seen<?", (cutoff_iso,)).fetchall()
             for row in rows:
@@ -322,10 +456,63 @@ def _offline_watchdog():
             for aid in back: broker.publish("online",{"agent_id":aid})
         except Exception: pass
 
+def _auto_deregister_loop():
+    """
+    Background thread: checks every hour for agents that haven't reported
+    in more than auto_deregister_days days, and removes them automatically.
+    Set auto_deregister_days = 0 to disable.
+    """
+    while True:
+        time.sleep(3600)
+        try:
+            # Read setting from DB
+            days = 0
+            try:
+                with db() as _c:
+                    _row = _c.execute(
+                        "SELECT value FROM settings WHERE key='auto_deregister_days'"
+                    ).fetchone()
+                    if _row:
+                        days = int(_row["value"])
+            except: pass
+
+            if days <= 0:
+                continue  # Disabled
+
+            cutoff = datetime.fromtimestamp(
+                time.time() - days * 86400,
+                tz=timezone.utc
+            ).isoformat(timespec="seconds")
+
+            with db() as c:
+                stale = c.execute(
+                    "SELECT agent_id, hostname FROM agents WHERE last_seen < ?",
+                    (cutoff,)
+                ).fetchall()
+
+                for row in stale:
+                    aid = row["agent_id"]
+                    hn  = row["hostname"] or aid
+                    for tbl in ("agents","reports","commands","alerts",
+                                "disk_trends","agent_poll_intervals"):
+                        try:
+                            c.execute("DELETE FROM %s WHERE agent_id=?" % tbl, (aid,))
+                        except: pass
+                    _log_activity(c, aid, hn, "deregister",
+                                  "Auto-deregistered after %d days offline" % days)
+                    broker.publish("agent_removed", {"agent_id":aid,"hostname":hn})
+                    print("[auto-deregister] Removed stale agent: %s (%s)" % (hn, aid))
+
+        except Exception as e:
+            print("[auto-deregister] Error: %s" % e)
+
+
 def _start_background_threads():
+    threading.Thread(target=_auto_deregister_loop, daemon=True, name='auto-deregister').start()
     threading.Thread(target=_offline_watchdog, daemon=True, name="offline-watchdog").start()
 
 
+# ── Agent API ──────────────────────────────────────────────────────────────────
 
 @app.route("/health")
 def health():
@@ -342,7 +529,12 @@ def api_register():
     with db() as c:
         existing = c.execute("SELECT agent_id,last_seen FROM agents WHERE agent_id=?", (agent_id,)).fetchone()
         if existing:
-            cutoff = datetime.fromtimestamp(time.time()-AGENT_OFFLINE_SECONDS,tz=timezone.utc).isoformat(timespec="seconds")
+            _thr2 = AGENT_OFFLINE_SECONDS
+            try:
+                _row2 = c.execute("SELECT value FROM settings WHERE key='offline_threshold_seconds'").fetchone()
+                if _row2: _thr2 = int(_row2["value"])
+            except: pass
+            cutoff = datetime.fromtimestamp(time.time()-_thr2,tz=timezone.utc).isoformat(timespec="seconds")
             was_offline = (existing["last_seen"] or "") < cutoff
             c.execute("UPDATE agents SET hostname=?,ip=?,os_version=?,agent_version=?,logged_users=?,welcome_title=?,last_seen=? WHERE agent_id=?",
                       (hostname,data.get("ip",""),data.get("os_version",""),data.get("agent_version",""),
@@ -395,12 +587,14 @@ def api_commands_all():
         rows = c.execute("SELECT c.command_id,c.agent_id,c.action,c.queued_at,c.acked_at,c.result,a.hostname FROM commands c LEFT JOIN agents a ON a.agent_id=c.agent_id ORDER BY c.queued_at DESC LIMIT 300").fetchall()
     return jsonify({"commands":[dict(r) for r in rows]})
 
+# ── NEW: Delete a single command from history ──────────────────────────────────
 @app.route("/api/commands/entry/<command_id>", methods=["DELETE"])
 def api_delete_command(command_id):
     with db() as c:
         c.execute("DELETE FROM commands WHERE command_id=?", (command_id,))
     return jsonify({"status":"ok"})
 
+# ── NEW: Clear all command history ────────────────────────────────────────────
 @app.route("/api/commands/all", methods=["DELETE"])
 def api_clear_all_commands():
     with db() as c:
@@ -437,10 +631,17 @@ def serve_tray_script():
     return Response("# not found",mimetype="text/plain"),404
 
 
+# ── Dashboard API ──────────────────────────────────────────────────────────────
 
 @app.route("/api/agents")
 def api_agents():
-    cutoff = datetime.fromtimestamp(time.time()-AGENT_OFFLINE_SECONDS,tz=timezone.utc).isoformat(timespec="seconds")
+    _thr = AGENT_OFFLINE_SECONDS
+    try:
+        with db() as _c:
+            _row = _c.execute("SELECT value FROM settings WHERE key='offline_threshold_seconds'").fetchone()
+            if _row: _thr = int(_row["value"])
+    except: pass
+    cutoff = datetime.fromtimestamp(time.time()-_thr,tz=timezone.utc).isoformat(timespec="seconds")
     try:
         with db() as c:
             rows = c.execute("""SELECT a.agent_id,a.hostname,a.ip,a.os_version,a.agent_version,
@@ -468,7 +669,13 @@ def api_agents():
 
 @app.route("/api/agents/<agent_id>")
 def api_agent_detail(agent_id):
-    cutoff = datetime.fromtimestamp(time.time()-AGENT_OFFLINE_SECONDS,tz=timezone.utc).isoformat(timespec="seconds")
+    _thr = AGENT_OFFLINE_SECONDS
+    try:
+        with db() as _c:
+            _row = _c.execute("SELECT value FROM settings WHERE key='offline_threshold_seconds'").fetchone()
+            if _row: _thr = int(_row["value"])
+    except: pass
+    cutoff = datetime.fromtimestamp(time.time()-_thr,tz=timezone.utc).isoformat(timespec="seconds")
     with db() as c:
         r = c.execute("SELECT * FROM agents WHERE agent_id=?",(agent_id,)).fetchone()
         if not r: return jsonify({"error":"not found"}),404
@@ -556,13 +763,19 @@ def api_clear_activity():
 
 @app.route("/api/stats")
 def api_stats():
-    cutoff  = datetime.fromtimestamp(time.time()-AGENT_OFFLINE_SECONDS,tz=timezone.utc).isoformat(timespec="seconds")
+    _thr = AGENT_OFFLINE_SECONDS
+    try:
+        with db() as _c:
+            _row = _c.execute("SELECT value FROM settings WHERE key='offline_threshold_seconds'").fetchone()
+            if _row: _thr = int(_row["value"])
+    except: pass
+    cutoff  = datetime.fromtimestamp(time.time()-_thr,tz=timezone.utc).isoformat(timespec="seconds")
     day_ago = datetime.fromtimestamp(time.time()-86400,tz=timezone.utc).isoformat(timespec="seconds")
     with db() as c:
         total    = c.execute("SELECT COUNT(*) FROM agents").fetchone()[0]
         online   = c.execute("SELECT COUNT(*) FROM agents WHERE last_seen>=?",(cutoff,)).fetchone()[0]
-        crits    = c.execute("SELECT COUNT(*) FROM alerts WHERE dismissed=0 AND severity='critical'").fetchone()[0]
-        warns    = c.execute("SELECT COUNT(*) FROM alerts WHERE dismissed=0 AND severity='warning'").fetchone()[0]
+        crits    = c.execute("SELECT COUNT(*) FROM alerts WHERE dismissed=0 AND severity='critical'").fetchone()[0] or 0
+        warns    = c.execute("SELECT COUNT(*) FROM alerts WHERE dismissed=0 AND severity='warning'").fetchone()[0] or 0
         reps24   = c.execute("SELECT COUNT(*) FROM reports WHERE received_at>=?",(day_ago,)).fetchone()[0]
         activity = c.execute("SELECT ts,hostname,event_type,detail FROM activity_log ORDER BY id DESC LIMIT 40").fetchall()
         rows     = c.execute("SELECT disk_summary FROM agents").fetchall()
@@ -1710,6 +1923,13 @@ function setAvFilter(f){
   avFilter=f;
   ['all','online','offline','critical','warning'].forEach(x=>{const p=document.getElementById('avp-'+x);if(p)p.classList.toggle('act',x===f);});
   renderAllView();
+  /* Update pill counts */
+  var critCount=agents.filter(function(a){return (a.worst_status||'').toLowerCase()==='critical'||(a.crit_alerts||0)>0;}).length;
+  var warnCount=agents.filter(function(a){return (a.worst_status||'').toLowerCase()==='warning'||(a.warn_alerts||0)>0;}).length;
+  var pc=document.getElementById('avp-critical');
+  var pw=document.getElementById('avp-warning');
+  if(pc)pc.textContent='Critical'+(critCount>0?' ('+critCount+')':'');
+  if(pw)pw.textContent='Warning'+(warnCount>0?' ('+warnCount+')':'');
 }
 
 function renderAllView(){
@@ -1718,8 +1938,8 @@ function renderAllView(){
     if(q&&!a.hostname.toLowerCase().includes(q)&&!(a.ip||'').includes(q))return false;
     if(avFilter==='online')   return a.online;
     if(avFilter==='offline')  return !a.online;
-    if(avFilter==='critical') return(a.worst_status||'').toLowerCase()==='critical';
-    if(avFilter==='warning')  return(a.worst_status||'').toLowerCase()==='warning';
+    if(avFilter==='critical') return (a.worst_status||'').toLowerCase()==='critical'||(a.crit_alerts||0)>0;
+    if(avFilter==='warning')  return (a.worst_status||'').toLowerCase()==='warning'||(a.warn_alerts||0)>0;
     return true;
   });
   const el=document.getElementById('avContent');
@@ -1926,6 +2146,7 @@ function connectSSE(){
   es.addEventListener('ack',e=>{const d=JSON.parse(e.data);toast('✅ <b>'+esc(d.hostname||d.agent_id)+'</b> ack\'d "'+esc(d.action)+'"','ok');if(selId===d.agent_id){renderOverview();refreshPending();}});
   es.addEventListener('offline',e=>{const d=JSON.parse(e.data);toast('⚫ <b>'+esc(d.hostname)+'</b> went offline','warn');refresh();});
   es.addEventListener('online', e=>{const d=JSON.parse(e.data);if(d.hostname)toast('🟢 <b>'+esc(d.hostname)+'</b> is back online','ok');refresh();});
+  es.addEventListener('alerts_updated',()=>{loadAlerts();loadStats();loadAgents();});
   es.addEventListener('agent_removed',e=>{const d=JSON.parse(e.data);if(selId===d.agent_id)selId=null;refresh();});
   es.onerror=()=>{dot.classList.remove('on');lbl.textContent='Reconnecting…';es.close();setTimeout(connectSSE,3000);};
 }
@@ -2438,7 +2659,15 @@ async function saveSettings(){
   var p={};
   for(var i=0;i<keys.length;i++){var e=document.getElementById('st-'+keys[i]);if(e)p[keys[i]]=e.value;}
   var r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
-  if(r.ok){toast('Settings saved','ok');}else{toast('Save failed','warn');}
+  if(r.ok){
+    toast('Settings saved','ok');
+    await loadAgents();
+    await loadStats();
+    await loadAlerts();
+    if(selId)renderOverview();
+  }else{
+    toast('Save failed','warn');
+  }
 }
 
 
@@ -2529,6 +2758,7 @@ function doCombinedExportHTML(){
 </script></body></html>"""
 
 
+
 @app.route("/api/settings", methods=["GET"])
 def api_get_settings():
     data = _cfg_get_all()
@@ -2543,8 +2773,9 @@ def api_save_settings():
         for k,v in data.items():
             if k in _SETTINGS_DEFAULTS:
                 c.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)",(k,str(v)))
+    _reevaluate_alerts()
+    broker.publish("settings_changed", {"ts": _now()})
     return jsonify({"status":"ok"})
-
 @app.route("/api/settings/poll/<agent_id>", methods=["POST"])
 def api_set_poll(agent_id):
     data = request.get_json(force=True,silent=True) or {}
@@ -3027,11 +3258,147 @@ def export_combined_csv():
 
 
 
+def _reevaluate_alerts():
+    """
+    Called immediately after settings save.
+    - Creates new alerts for disks that now breach the new thresholds
+    - Dismisses alerts for disks that no longer breach the thresholds
+    Both directions, instant — no need to wait for agent report.
+    """
+    try:
+        with db() as c:
+            def _t(k, d):
+                row = c.execute("SELECT value FROM settings WHERE key=?",(k,)).fetchone()
+                try: return float(row["value"]) if row else float(d)
+                except: return float(d)
+
+            t = {
+                "temp_warn":  _t("thresh_temp_warn",  45),
+                "temp_crit":  _t("thresh_temp_crit",  60),
+                "real_warn":  _t("thresh_realloc_warn", 1),
+                "real_crit":  _t("thresh_realloc_crit", 5),
+                "pend_warn":  _t("thresh_pending_warn", 1),
+                "pend_crit":  _t("thresh_pending_crit", 5),
+                "uncr_warn":  _t("thresh_uncorr_warn",  1),
+                "uncr_crit":  _t("thresh_uncorr_crit",  1),
+                "wear_warn":  _t("thresh_wear_warn",   75),
+                "wear_crit":  _t("thresh_wear_crit",   90),
+                "spar_warn":  _t("thresh_spare_warn",  20),
+                "spar_crit":  _t("thresh_spare_crit",  10),
+            }
+
+            # Get all agents with their current disk data
+            agents = c.execute("SELECT agent_id, hostname, disk_summary FROM agents").fetchall()
+
+            fired = 0
+            dismissed = 0
+
+            for ag in agents:
+                agent_id = ag["agent_id"]
+                hostname = ag["hostname"] or "?"
+                try:
+                    disks = json.loads(ag["disk_summary"]) if ag["disk_summary"] else []
+                except:
+                    disks = []
+
+                for disk in disks:
+                    serial = disk.get("serial") or disk.get("model","?")
+                    model  = disk.get("model","?")
+
+                    # Determine what severity this disk SHOULD have right now
+                    issues_crit = []
+                    issues_warn = []
+
+                    temp = disk.get("temperature")
+                    if temp is not None:
+                        if   temp >= t["temp_crit"]: issues_crit.append("temperature %d°C (crit >= %d)" % (temp, int(t["temp_crit"])))
+                        elif temp >= t["temp_warn"]: issues_warn.append("temperature %d°C (warn >= %d)" % (temp, int(t["temp_warn"])))
+
+                    real = disk.get("reallocated")
+                    if real is not None:
+                        if   real >= t["real_crit"]: issues_crit.append("%d reallocated sectors" % real)
+                        elif real >= t["real_warn"]: issues_warn.append("%d reallocated sectors" % real)
+
+                    pend = disk.get("pending")
+                    if pend is not None:
+                        if   pend >= t["pend_crit"]: issues_crit.append("%d pending sectors" % pend)
+                        elif pend >= t["pend_warn"]: issues_warn.append("%d pending sectors" % pend)
+
+                    uncr = disk.get("uncorrectable")
+                    if uncr is not None:
+                        if   uncr >= t["uncr_crit"]: issues_crit.append("%d uncorrectable errors" % uncr)
+                        elif uncr >= t["uncr_warn"]: issues_warn.append("%d uncorrectable errors" % uncr)
+
+                    wear = disk.get("percentage_used")
+                    if wear is not None:
+                        if   wear >= t["wear_crit"]: issues_crit.append("SSD wear %d%%" % wear)
+                        elif wear >= t["wear_warn"]: issues_warn.append("SSD wear %d%%" % wear)
+
+                    spare = disk.get("available_spare")
+                    if spare is not None:
+                        if   spare <= t["spar_crit"]: issues_crit.append("spare %d%%" % spare)
+                        elif spare <= t["spar_warn"]: issues_warn.append("spare %d%%" % spare)
+
+                    merr = disk.get("media_errors")
+                    if merr: issues_warn.append("%d media errors" % merr)
+
+                    # Determine target severity
+                    if issues_crit:
+                        target_sev = "critical"
+                        detail = ", ".join(issues_crit)
+                        msg = "Disk '%s' (S/N: %s) on %s — CRITICAL: %s" % (model, serial, hostname, detail)
+                    elif issues_warn:
+                        target_sev = "warning"
+                        detail = ", ".join(issues_warn)
+                        msg = "Disk '%s' (S/N: %s) on %s — WARNING: %s" % (model, serial, hostname, detail)
+                    else:
+                        target_sev = None
+
+                    # Get existing active alerts for this disk
+                    existing = c.execute(
+                        "SELECT id, severity FROM alerts WHERE agent_id=? AND disk_serial=? AND dismissed=0",
+                        (agent_id, serial)).fetchall()
+
+                    if target_sev:
+                        # Should have an active alert — check if correct one exists
+                        correct_exists = any(e["severity"] == target_sev for e in existing)
+                        if not correct_exists:
+                            # Dismiss any wrong-severity existing alerts
+                            for e in existing:
+                                c.execute("UPDATE alerts SET dismissed=1 WHERE id=?", (e["id"],))
+                                dismissed += 1
+                            # Create the new alert
+                            c.execute(
+                                "INSERT INTO alerts(agent_id,hostname,severity,message,disk_serial,created_at)"
+                                " VALUES(?,?,?,?,?,?)",
+                                (agent_id, hostname, target_sev, msg, serial, _now()))
+                            broker.publish("alert", {
+                                "agent_id":agent_id, "hostname":hostname,
+                                "severity":target_sev, "message":msg})
+                            _log_activity(c, agent_id, hostname, "alert",
+                                          "[threshold change] " + msg)
+                            fired += 1
+                    else:
+                        # Should have NO active alert — dismiss all existing
+                        for e in existing:
+                            c.execute("UPDATE alerts SET dismissed=1 WHERE id=?", (e["id"],))
+                            dismissed += 1
+
+            if fired > 0 or dismissed > 0:
+                broker.publish("alerts_updated", {"fired": fired, "dismissed": dismissed})
+                print("[thresholds] fired=%d dismissed=%d" % (fired, dismissed))
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print("[reevaluate] error: %s" % e)
+
+
 @app.route("/")
 def dashboard():
     return render_template_string(DASHBOARD_HTML)
 
 
+# ── Daemon support ─────────────────────────────────────────────────────────────
 
 def _print_banner(port):
     sep = "=" * 60
