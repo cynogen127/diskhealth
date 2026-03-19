@@ -1,0 +1,466 @@
+<Window x:Class="SnipeAgent.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Snipe-IT Asset Registration"
+        Width="820" Height="740"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#1E1E2E">
+
+    <Window.Resources>
+        <Style x:Key="PrimaryBtn" TargetType="Button">
+            <Setter Property="Background"      Value="#7C3AED"/>
+            <Setter Property="Foreground"      Value="White"/>
+            <Setter Property="FontSize"        Value="13"/>
+            <Setter Property="FontWeight"      Value="SemiBold"/>
+            <Setter Property="Padding"         Value="28,10"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#6D28D9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Background" Value="#4B4B6B"/>
+                                <Setter Property="Foreground" Value="#7070A0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryBtn" TargetType="Button" BasedOn="{StaticResource PrimaryBtn}">
+            <Setter Property="Background" Value="#313145"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#3D3D5C"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="GreenBtn" TargetType="Button" BasedOn="{StaticResource PrimaryBtn}">
+            <Setter Property="Background" Value="#16A34A"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#15803D"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="InputBox" TargetType="TextBox">
+            <Setter Property="Background"               Value="#313145"/>
+            <Setter Property="Foreground"               Value="#F0F0FF"/>
+            <Setter Property="CaretBrush"               Value="#F0F0FF"/>
+            <Setter Property="SelectionBrush"           Value="#7C3AED"/>
+            <Setter Property="BorderBrush"              Value="#5B5B8A"/>
+            <Setter Property="BorderThickness"          Value="1"/>
+            <Setter Property="Padding"                  Value="10,8"/>
+            <Setter Property="FontSize"                 Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="InfoLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#9090B0"/>
+            <Setter Property="FontSize"   Value="11"/>
+            <Setter Property="Margin"     Value="0,0,0,2"/>
+        </Style>
+        <Style x:Key="InfoValue" TargetType="TextBlock">
+            <Setter Property="Foreground"   Value="#F0F0FF"/>
+            <Setter Property="FontSize"     Value="12"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin"       Value="0,0,0,10"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="70"/>
+            <RowDefinition Height="50"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="70"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER -->
+        <Border Grid.Row="0" Background="#27273A">
+            <Grid Margin="30,0">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="SNIPE-IT ASSET REGISTRATION"
+                               Foreground="#7C3AED" FontSize="11" FontWeight="Bold"/>
+                    <TextBlock x:Name="HeaderSubtitle" Text="Register and track this computer"
+                               Foreground="#9090B0" FontSize="13" Margin="0,3,0,0"/>
+                </StackPanel>
+                <TextBlock Text="MasterSofa IT" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" Foreground="#4B4B6B" FontSize="11"/>
+            </Grid>
+        </Border>
+
+        <!-- STEP INDICATOR (4 steps) -->
+        <Border Grid.Row="1" Background="#222235" BorderBrush="#2D2D45" BorderThickness="0,1,0,1">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="Step1Circle" Width="26" Height="26" CornerRadius="13" Background="#7C3AED">
+                        <TextBlock x:Name="Step1Num" Text="1" Foreground="White" FontWeight="Bold" FontSize="11"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="Step1Label" Text="System Info" Foreground="#F0F0FF"
+                               FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Rectangle Width="40" Height="1" Fill="#3D3D5C" Margin="10,0"/>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="Step2Circle" Width="26" Height="26" CornerRadius="13" Background="#3D3D5C">
+                        <TextBlock x:Name="Step2Num" Text="2" Foreground="#7070A0" FontWeight="Bold" FontSize="11"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="Step2Label" Text="Register + License" Foreground="#7070A0"
+                               FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Rectangle Width="40" Height="1" Fill="#3D3D5C" Margin="10,0"/>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="Step3Circle" Width="26" Height="26" CornerRadius="13" Background="#3D3D5C">
+                        <TextBlock x:Name="Step3Num" Text="3" Foreground="#7070A0" FontWeight="Bold" FontSize="11"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="Step3Label" Text="Agent Install" Foreground="#7070A0"
+                               FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Rectangle Width="40" Height="1" Fill="#3D3D5C" Margin="10,0"/>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="Step4Circle" Width="26" Height="26" CornerRadius="13" Background="#3D3D5C">
+                        <TextBlock x:Name="Step4Num" Text="4" Foreground="#7070A0" FontWeight="Bold" FontSize="11"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="Step4Label" Text="Complete" Foreground="#7070A0"
+                               FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- PAGES -->
+        <Grid Grid.Row="2">
+
+            <!-- ══ PAGE 1: SYSTEM INFO ══ -->
+            <Grid x:Name="Page1" Margin="30,20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Detected System Information"
+                           Foreground="#F0F0FF" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                <Border Grid.Row="1" Background="#27273A" CornerRadius="10" Padding="20">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="COMPUTER NAME"/>
+                                    <TextBlock x:Name="ValComputerName" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="MODEL"/>
+                                    <TextBlock x:Name="ValModel" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="OPERATING SYSTEM"/>
+                                    <TextBlock x:Name="ValOs" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="PROCESSOR"/>
+                                    <TextBlock x:Name="ValCpu" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="TYPE"/>
+                                    <TextBlock x:Name="ValType" Style="{StaticResource InfoValue}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="IP ADDRESS"/>
+                                    <TextBlock x:Name="ValIp" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="MAC ADDRESS"/>
+                                    <TextBlock x:Name="ValMac" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="MEMORY (RAM)"/>
+                                    <TextBlock x:Name="ValRam" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="STORAGE"/>
+                                    <TextBlock x:Name="ValStorage" Style="{StaticResource InfoValue}"/>
+                                    <TextBlock Style="{StaticResource InfoLabel}" Text="UPTIME"/>
+                                    <TextBlock x:Name="ValUptime" Style="{StaticResource InfoValue}"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Style="{StaticResource InfoLabel}" Text="DISK HEALTH"/>
+                            <TextBlock x:Name="ValDiskHealth" Style="{StaticResource InfoValue}" Text="Loading..."/>
+                            <Separator Background="#3D3D5C" Margin="0,6,0,14"/>
+                            <TextBlock Foreground="#9090B0" FontSize="11" Margin="0,0,0,4">YOUR NAME  *</TextBlock>
+                            <TextBox x:Name="TxtUserName" Style="{StaticResource InputBox}" Height="36"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- ══ PAGE 2: REGISTER + LICENSE ══ -->
+            <Grid x:Name="Page2" Margin="30,20" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Row 0: title + status badge -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock x:Name="Page2Title" Text="Registering Asset..."
+                               Foreground="#F0F0FF" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <Border x:Name="AssetStatusBadge" Background="#313145" CornerRadius="6"
+                            Padding="10,4" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="AssetStatusText" Text="Working..." Foreground="#9090B0" FontSize="11"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Row 1: License panel — shown ABOVE log after asset registered, no scroll needed -->
+                <Border x:Name="LicensePanel" Grid.Row="1" Background="#27273A" CornerRadius="10"
+                        Padding="16,14" Margin="0,0,0,10" Visibility="Collapsed">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Foreground="#F0F0FF" FontSize="13" FontWeight="SemiBold">
+                                    License Assignment
+                                </TextBlock>
+                                <TextBlock Foreground="#9090B0" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap">
+                                    Asset registered. Enter the Windows license key to assign, or click Skip.
+                                </TextBlock>
+                            </StackPanel>
+                            <!-- Detected key + activation inline on the right -->
+                            <Border Grid.Column="1" Background="#1E1E2E" CornerRadius="6" Padding="10,6" Margin="14,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Style="{StaticResource InfoLabel}" Text="DETECTED KEY"/>
+                                        <TextBlock x:Name="ValDetectedKey" Foreground="#6060A0" FontSize="11"
+                                                   MaxWidth="220" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource InfoLabel}" Text="ACTIVATION"/>
+                                        <TextBlock x:Name="ValActivation" Foreground="#9090B0" FontSize="11"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        <!-- Key input + buttons always fully visible -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtLicenseKey" Grid.Column="0"
+                                     Style="{StaticResource InputBox}" Height="36"
+                                     ToolTip="e.g. XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"
+                                     VerticalAlignment="Center"/>
+                            <Button x:Name="BtnAssignLicense" Grid.Column="1"
+                                    Content="Assign License" Style="{StaticResource PrimaryBtn}"
+                                    Margin="10,0,0,0" Click="BtnAssignLicense_Click"/>
+                            <Button x:Name="BtnSkipLicense" Grid.Column="2"
+                                    Content="Skip" Style="{StaticResource SecondaryBtn}"
+                                    Margin="8,0,0,0" Click="BtnSkipLicense_Click"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Row 2: Registration log — fills remaining space -->
+                <Border Grid.Row="2" Background="#0F0F1A" CornerRadius="8" BorderBrush="#2D2D45" BorderThickness="1"
+                        MinHeight="80">
+                    <ScrollViewer x:Name="AssetLogScroller" VerticalScrollBarVisibility="Auto" Padding="12">
+                        <TextBlock x:Name="AssetLogOutput" FontFamily="Consolas" FontSize="11"
+                                   Foreground="#B0B0D0" TextWrapping="Wrap" LineHeight="18"/>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- ══ PAGE 3: AGENT INSTALL ══ -->
+            <Grid x:Name="Page3" Margin="30,20" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Prompt card -->
+                <Border x:Name="AgentPromptCard" Grid.Row="0" Background="#27273A" CornerRadius="10"
+                        Padding="24,20" Margin="0,0,0,16">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#128200;" FontSize="36"
+                                   VerticalAlignment="Center" Margin="0,0,20,0"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Install DiskHealth Agent?"
+                                       Foreground="#F0F0FF" FontSize="16" FontWeight="Bold" Margin="0,0,0,6"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#9090B0" FontSize="12">
+                                The DiskHealth Agent monitors disk health and reports to your control panel.
+                                It runs as a scheduled task in the background, starting automatically on boot.
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Server URL input + interval + buttons — shown when asking -->
+                <StackPanel x:Name="AgentInputPanel" Grid.Row="1" Margin="0,0,0,16">
+                    <!-- Row 1: URL + interval side by side -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="120"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                            <TextBlock Foreground="#9090B0" FontSize="11" Margin="0,0,0,4">DISKHEALTH SERVER URL</TextBlock>
+                            <TextBox x:Name="TxtAgentServer"
+                                     Style="{StaticResource InputBox}" Height="38"
+                                     Text="http://192.168.0.150:8765"
+                                     ToolTip="http://server-ip:port"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Foreground="#9090B0" FontSize="11" Margin="0,0,0,4">POLL INTERVAL (sec)</TextBlock>
+                            <TextBox x:Name="TxtPollInterval"
+                                     Style="{StaticResource InputBox}" Height="38"
+                                     Text="21600"
+                                     ToolTip="How often the agent sends a report (seconds). Minimum: 5"/>
+                        </StackPanel>
+                    </Grid>
+                    <!-- Row 2: hint text + action buttons -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Foreground="#5B5B8A" FontSize="11" VerticalAlignment="Center"
+                                       Text="A UAC prompt will appear — click Yes to allow installation."/>
+                            <TextBlock Foreground="#5B5B8A" FontSize="11" VerticalAlignment="Center" Margin="0,4,0,0"
+                                       Text="Use Update to reinstall/upgrade or Uninstall to remove the agent."/>
+                        </StackPanel>
+                        <Button x:Name="BtnInstallAgent" Grid.Column="1"
+                                Content="&#10003;  Install Agent" Style="{StaticResource GreenBtn}"
+                                Margin="10,0,0,0" Click="BtnInstallAgent_Click"/>
+                        <Button x:Name="BtnUpdateAgent" Grid.Column="2"
+                                Content="Update Agent" Style="{StaticResource PrimaryBtn}"
+                                Margin="8,0,0,0" Click="BtnUpdateAgent_Click"/>
+                        <Button x:Name="BtnUninstallAgent" Grid.Column="3"
+                                Content="Uninstall" Style="{StaticResource SecondaryBtn}"
+                                Margin="8,0,0,0" Click="BtnUninstallAgent_Click"/>
+                        <Button x:Name="BtnSkipAgent" Grid.Column="4"
+                                Content="Skip" Style="{StaticResource SecondaryBtn}"
+                                Margin="8,0,0,0" Click="BtnSkipAgent_Click"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Agent install log — shown during/after install -->
+                <Border x:Name="AgentLogBorder" Grid.Row="2" Background="#0F0F1A" CornerRadius="8"
+                        BorderBrush="#2D2D45" BorderThickness="1" Visibility="Collapsed">
+                    <ScrollViewer x:Name="AgentLogScroller" VerticalScrollBarVisibility="Auto" Padding="12">
+                        <TextBlock x:Name="AgentLogOutput" FontFamily="Consolas" FontSize="11"
+                                   Foreground="#B0B0D0" TextWrapping="Wrap" LineHeight="18"/>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- ══ PAGE 4: COMPLETE SUMMARY ══ -->
+            <Grid x:Name="Page4" Margin="30,20" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Border x:Name="FinalBanner" Grid.Row="0" CornerRadius="10"
+                        Background="#27273A" Padding="20,16" Margin="0,0,0,14">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="FinalIcon" Text="&#9989;" FontSize="26"
+                                   VerticalAlignment="Center" Margin="0,0,14,0"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="FinalTitle" Text="All Done!"
+                                       Foreground="#22C55E" FontSize="16" FontWeight="Bold"/>
+                            <TextBlock x:Name="FinalSub" Text="" Foreground="#9090B0"
+                                       FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Summary cards -->
+                <Grid Grid.Row="1" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Background="#27273A" CornerRadius="8" Padding="12" Margin="0,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="ASSET ID" Style="{StaticResource InfoLabel}"/>
+                            <TextBlock x:Name="SumAssetId" Text="—" Foreground="#7C3AED"
+                                       FontSize="16" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Background="#27273A" CornerRadius="8" Padding="12" Margin="5,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="COMPUTER" Style="{StaticResource InfoLabel}"/>
+                            <TextBlock x:Name="SumComputer" Text="—" Foreground="#F0F0FF"
+                                       FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Background="#27273A" CornerRadius="8" Padding="12" Margin="5,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="LICENSE" Style="{StaticResource InfoLabel}"/>
+                            <TextBlock x:Name="SumLicense" Text="—" Foreground="#F0F0FF"
+                                       FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="3" Background="#27273A" CornerRadius="8" Padding="12" Margin="5,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="AGENT" Style="{StaticResource InfoLabel}"/>
+                            <TextBlock x:Name="SumAgent" Text="—" Foreground="#F0F0FF"
+                                       FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Row="2" Background="#0F0F1A" CornerRadius="8" BorderBrush="#2D2D45" BorderThickness="1">
+                    <ScrollViewer x:Name="FinalLogScroller" VerticalScrollBarVisibility="Auto" Padding="14">
+                        <TextBlock x:Name="FinalLogOutput" FontFamily="Consolas" FontSize="11"
+                                   Foreground="#B0B0D0" TextWrapping="Wrap" LineHeight="18"/>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+        </Grid>
+
+        <!-- FOOTER -->
+        <Border Grid.Row="3" Background="#27273A" BorderBrush="#2D2D45" BorderThickness="0,1,0,0">
+            <Grid Margin="30,0">
+                <TextBlock x:Name="FooterInfo" VerticalAlignment="Center"
+                           Foreground="#4B4B6B" FontSize="11"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="BtnBack" Content="Back" Style="{StaticResource SecondaryBtn}"
+                            Visibility="Collapsed" Margin="0,0,0,0" Click="BtnBack_Click"/>
+                    <Button x:Name="BtnFooterUninstall" Content="Uninstall Agent" Style="{StaticResource SecondaryBtn}"
+                            Margin="0,0,0,0" Click="BtnFooterUninstall_Click"/>
+                    <Button x:Name="BtnNext" Content="Next" Style="{StaticResource PrimaryBtn}"
+                            Click="BtnNext_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

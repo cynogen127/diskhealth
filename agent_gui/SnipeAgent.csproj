@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>SnipeAgent</RootNamespace>
+    <AssemblyName>SnipeAgent</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <Version>3.2.0</Version>
+    <AssemblyTitle>Snipe-IT Asset Registration</AssemblyTitle>
+    <ApplicationIcon>snipeagent.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <None Include="snipeagent.ico" />
+  </ItemGroup>
+
+  <!-- PS1 files are in the project root (not a subfolder) -->
+  <ItemGroup>
+    <EmbeddedResource Include="DiskHealthAgent.ps1"  LogicalName="DiskHealthAgent.ps1"  />
+    <EmbeddedResource Include="DiskHealthTray.ps1"   LogicalName="DiskHealthTray.ps1"   />
+    <EmbeddedResource Include="InstallDiskAgent.ps1" LogicalName="InstallDiskAgent.ps1" />
+  </ItemGroup>
+
+</Project>
