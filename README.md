@@ -44,7 +44,7 @@ A self-hosted Windows disk health monitoring system. A lightweight Python/Flask 
 ```
 Windows Desktop (Agent)          Linux Server (Flask)
 ┌─────────────────────┐          ┌──────────────────────┐
-│  DiskHealthAgent.ps1│◄────────►│  server_FINAL.py     │
+│  DiskHealthAgent.ps1│◄────────►│  panel.py     │
 │  - Reads SMART data │  HTTP    │  - SQLite database   │
 │  - Polls for cmds   │  REST    │  - SSE push events   │
 │  - Reports disks    │          │  - Web dashboard     │
@@ -97,12 +97,12 @@ curl -Lo chart.umd.min.js \
   https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js
 ```
 
-> If your browser cannot reach the internet directly, the server serves Chart.js locally at `/chart.js`. Download the file on the server machine and place it in the same directory as `server_FINAL.py`.
+> If your browser cannot reach the internet directly, the server serves Chart.js locally at `/chart.js`. Download the file on the server machine and place it in the same directory as `panel.py`.
 
 ### 4. Start the server
 
 ```bash
-python3 server_FINAL.py
+python3 panel.py
 ```
 
 Default port: **8765**. Open `http://your-server-ip:8765` in a browser.
@@ -132,7 +132,7 @@ The installer:
 ## Command Line Options
 
 ```
-python3 server_FINAL.py [options]
+python3 panel.py [options]
 
   --host HOST       Bind address (default: 0.0.0.0)
   --port PORT       Port number (default: 8765)
@@ -148,13 +148,13 @@ python3 server_FINAL.py [options]
 
 ```bash
 # Start
-python3 server_FINAL.py --daemon
+python3 panel.py --daemon
 
 # Check status
-python3 server_FINAL.py --status
+python3 panel.py --status
 
 # Stop
-python3 server_FINAL.py --stop
+python3 panel.py --stop
 ```
 
 ---
@@ -250,7 +250,7 @@ python3 server_FINAL.py --stop
 
 ```
 diskhealth/
-├── server_FINAL.py          # Main server (run this)
+├── panel.py          # Main server (run this)
 ├── chart.umd.min.js         # Chart.js (local copy)
 ├── diskhealth.db            # SQLite database (auto-created)
 ├── agent_scripts/
@@ -299,7 +299,7 @@ SQLite database auto-created at `diskhealth.db` on first run.
 - USB flash drives typically have no SMART data to trend
 
 **Chart.js not loading**
-- Confirm `chart.umd.min.js` is in the same folder as `server_FINAL.py`
+- Confirm `chart.umd.min.js` is in the same folder as `panel.py`
 - Test: `curl http://your-server:8765/chart.js | head -c 30`
 - Should show: `!function(t,e){...`
 
